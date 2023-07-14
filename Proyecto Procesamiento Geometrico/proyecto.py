@@ -43,17 +43,19 @@ def dividir_aristas(mesh: openmesh.TriMesh, Lmax: float):
             edges_left.append(arista_nueva)
 
 
-
 def colapsar_aristas(mesh: openmesh.TriMesh, Lmin: float, Lmax: float):
-    
-    while True:
-        edge_encontrada = False
+    def aristas_cortas(aristas):
+        return list(filter(lambda arista: mesh.calc_edge_length(arista) < Lmin, aristas))
 
+    n_aristas_cortas = len(aristas_cortas(mesh.edges()))
+    ok_count = n_aristas_cortas
+    while n_aristas_cortas > 0 and ok_count > 0:
+        ok_count = 0
         for arista in mesh.edges():
             longitud_arista = mesh.calc_edge_length(arista)
 
             if longitud_arista < Lmin:
-                
+
                 halfedge = mesh.halfedge_handle(arista, 0)
                 vertice_a = mesh.from_vertex_handle(halfedge)
                 vertice_b = mesh.point(mesh.to_vertex_handle(halfedge))
@@ -61,22 +63,25 @@ def colapsar_aristas(mesh: openmesh.TriMesh, Lmin: float, Lmax: float):
                 colapsar = True
 
                 for vecino in mesh.vv(vertice_a):
-                    longitud_arista_vecina = math.sqrt((vertice_b[0] - mesh.point(vecino)[0]) ** 2 + (vertice_b[1] - mesh.point(vecino)[1]) ** 2 + (vertice_b[2] - mesh.point(vecino)[2]) ** 2)
+                    longitud_arista_vecina = math.sqrt(
+                        ((vertice_b - mesh.point(vecino)) ** 2).sum())
 
                     if longitud_arista_vecina > Lmax:
                         colapsar = False
                         break
-
                 if colapsar:
-                    mesh.collapse(halfedge)
-                    edge_encontrada = True
-                    break
+                    if mesh.is_collapse_ok(halfedge):
+                        mesh.collapse(halfedge)
+                        mesh.garbage_collection()
+                        ok_count += 1
+                    #break
+            print(len(mesh.edges()))
+            if len(mesh.edges()) == 3038:
+                print("oal")
+        n_aristas_cortas = len(aristas_cortas(mesh.edges()))
+        print(n_aristas_cortas)
 
-            
-        if not edge_encontrada:
-            break
 
-    
 def optimizar_valencia(mesh: openmesh.TriMesh):
     internal_variance = 6
     external_variance = 4
@@ -152,6 +157,7 @@ def remeshing(mesh, edge_length, iteraciones):
         dividir_aristas(mesh, Lmax)
         print("Iteración {}: Terminada la división de aristas".format(i))
         colapsar_aristas(mesh, Lmin, Lmax)
+        print("Iteración {}: Terminado el colapso de aristas".format(i))
         optimizar_valencia(mesh)
         relajacion_tangencial(mesh)
         #proyectar_vertices(mesh)
