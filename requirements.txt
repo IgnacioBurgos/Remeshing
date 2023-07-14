@@ -1,0 +1,3 @@
+openmesh
+polyscope
+numpy

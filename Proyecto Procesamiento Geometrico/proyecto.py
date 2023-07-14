@@ -3,36 +3,48 @@ import argparse
 import polyscope as ps
 import numpy as np
 import math
+import os
 
 
-def dividir_aristas(mesh, Lmax):
+def encontrar_arista(mesh: openmesh.TriMesh, v1: openmesh.VertexHandle, v2: openmesh.VertexHandle) -> openmesh.EdgeHandle:
+    # https://stackoverflow.com/questions/64243444/openmesh-find-edge-connecting-two-vertices
+    he = mesh.find_halfedge(v1, v2)
+    if he.is_valid():
+        return mesh.edge_handle(he)
 
-    
-    while True:
 
-        edge_encontrada = False
+def dividir_aristas(mesh: openmesh.TriMesh, Lmax: float):
+    edges_left = [e for e in mesh.edges()]
+    while len(edges_left) > 0:
+        edges_left = list(filter(lambda arista: mesh.calc_edge_length(arista) > Lmax, edges_left))
+        edges_iter = edges_left.copy()
+        for arista in edges_iter: #iteramos sobre las aristas de la malla
+            halfedge = mesh.halfedge_handle(arista, 0)
+            vertice_inicio = mesh.from_vertex_handle(halfedge)
+            coords_inicio = mesh.point(vertice_inicio)
+            vertice_final = mesh.to_vertex_handle(halfedge)
+            coords_final = mesh.point(vertice_final)
 
-        for arista in mesh.edges(): #iteramos sobre las aristas de la malla
-            longitud_arista = mesh.calc_edge_length(arista)
+            # calcular el punto medio
+            vertice_calculado = (coords_inicio + coords_final) / 2.0
 
-            if longitud_arista > Lmax: 
-                halfedge = mesh.halfedge_handle(arista, 0)  
-                vertice_inicio = mesh.point(mesh.from_vertex_handle(halfedge)) 
-                vertice_final = mesh.point(mesh.to_vertex_handle(halfedge))
-
-                # calcular el punto medio
-                vertice_calculado = (vertice_inicio + vertice_final) / 2.0
-
-                # agregar el vertice
-                nuevo_vertice = mesh.add_vertex(vertice_calculado)
+            # agregar el vertice
+            nuevo_vertice = mesh.add_vertex(vertice_calculado)
             
-                # dividir la arista en el nuevo vertice.
-                mesh.split_edge(arista, nuevo_vertice)
+            # dividir la arista en el nuevo vertice.
+            mesh.split_edge(arista, nuevo_vertice)
 
-        if not edge_encontrada:
-            break
+            # Encontrar edge nuevo
+            arista_nueva = encontrar_arista(mesh, vertice_inicio, nuevo_vertice)
+            if arista_nueva == arista:
+                # era la otra
+                arista_nueva = encontrar_arista(mesh, vertice_final, nuevo_vertice)
 
-def colapsar_aristas(mesh, Lmin, Lmax):
+            edges_left.append(arista_nueva)
+
+
+
+def colapsar_aristas(mesh: openmesh.TriMesh, Lmin: float, Lmax: float):
     
     while True:
         edge_encontrada = False
@@ -64,9 +76,8 @@ def colapsar_aristas(mesh, Lmin, Lmax):
         if not edge_encontrada:
             break
 
-
     
-def optimizar_valencia(mesh):
+def optimizar_valencia(mesh: openmesh.TriMesh):
     internal_variance = 6
     external_variance = 4
     
@@ -97,10 +108,9 @@ def optimizar_valencia(mesh):
 
             if deviation_pre <= deviation_post:
                 mesh.flip(arista)
-            
 
 
-def relajacion_tangencial(mesh):
+def relajacion_tangencial(mesh: openmesh.TriMesh):
 
     q = {}
     
@@ -139,8 +149,8 @@ def remeshing(mesh, edge_length, iteraciones):
     
     #iterar por una cierta cantidad de iteraciones
     for i in range(iteraciones):
-        print(i)
         dividir_aristas(mesh, Lmax)
+        print("Iteración {}: Terminada la división de aristas".format(i))
         colapsar_aristas(mesh, Lmin, Lmax)
         optimizar_valencia(mesh)
         relajacion_tangencial(mesh)
@@ -148,20 +158,27 @@ def remeshing(mesh, edge_length, iteraciones):
 
     return mesh
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--file", type=str, default="", help="Nombre del archivo")
-opt = parser.parse_args()
 
-mesh = openmesh.read_trimesh(opt.file)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file", type=str, default="", help="Nombre del archivo")
+    opt = parser.parse_args()
 
-iteraciones = 10
-edge_length = 0.01
-remeshing_mesh = remeshing(mesh, edge_length, iteraciones)
+    if not os.path.exists(opt.file):
+        raise FileNotFoundError("Couldn't find file in path {}".format(opt.file))
 
-# Mostrar la malla original y la malla con las divisiones
-ps.init()
+    mesh = openmesh.read_trimesh(opt.file)
 
-#ps.register_surface_mesh("malla_original", mesh.points(), mesh.face_vertex_indices())
-ps.register_surface_mesh("malla_remeshing", remeshing_mesh.points(), remeshing_mesh.face_vertex_indices())
+    iteraciones = 10
+    #edge_length = 0.01
+    lengths = np.array([mesh.calc_edge_length(arista) for arista in mesh.edges()])
+    edge_length = lengths.mean()
+    remeshing_mesh = remeshing(mesh, edge_length, iteraciones)
 
-ps.show()
+    # Mostrar la malla original y la malla con las divisiones
+    ps.init()
+
+    #ps.register_surface_mesh("malla_original", mesh.points(), mesh.face_vertex_indices())
+    ps.register_surface_mesh("malla_remeshing", remeshing_mesh.points(), remeshing_mesh.face_vertex_indices())
+
+    ps.show()
