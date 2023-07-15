@@ -147,11 +147,7 @@ def colapsar_aristas(mesh: openmesh.TriMesh, Lmin: float, Lmax: float):
                         mesh.garbage_collection()
                         ok_count += 1
                     # break
-            print(len(mesh.edges()))
-            if len(mesh.edges()) == 3038:
-                print("oal")
         n_aristas_cortas = len(aristas_cortas(mesh.edges()))
-        print(n_aristas_cortas)
 
 
 def optimizar_valencia(mesh: openmesh.TriMesh):
@@ -200,6 +196,7 @@ def optimizar_valencia(mesh: openmesh.TriMesh):
 def relajacion_tangencial(mesh: openmesh.TriMesh):
     vertex_normals = calculate_vertex_normals_by_angle(mesh)
     q = {}
+    tangent = {}
 
     for vertice in mesh.vertices():
         vertice_id = vertice.idx()
@@ -220,25 +217,32 @@ def relajacion_tangencial(mesh: openmesh.TriMesh):
         n = vertex_normals[vertice_id]
 
         # formula del libro
-        p_prime = q[vertice_id] + np.dot(n, (p - q[vertice_id])) * n
+        tangent[vertice_id] = q[vertice_id] + np.dot(n, (p - q[vertice_id])) * n
+    return tangent
 
-        # actualizar posición del vertice
-        new_p = proyectar_vertices(mesh,
+
+def proyectar_vertices(mesh:openmesh.TriMesh, posiciones_tangenciales):
+    face_normals = calculate_face_normals(mesh)
+    for vertice in mesh.vertices():
+        vertice_id = vertice.idx()
+        p_prime = posiciones_tangenciales[vertice_id]
+    # actualizar posición del vertice
+        new_p = proyectar_un_vertice(mesh,
                                    vertice,
                                    p_prime,
-                                   n)
+                                   face_normals)
         if new_p is not None:
             mesh.set_point(vertice, new_p)
-        # mesh.set_point(vertice, p_prime)
 
 
-def proyectar_vertices(mesh: openmesh.TriMesh,
+def proyectar_un_vertice(mesh: openmesh.TriMesh,
                        original_vertex: openmesh.VertexHandle,
                        tangential_pos: np.ndarray,
-                       normal: np.ndarray):
+                       face_normals: dict):
 
     #for neighbor_face in mesh.faces():
     for neighbor_face in mesh.vf(original_vertex):
+        normal = face_normals[neighbor_face.idx()]
         a, b, c = [mesh.point(v) for v in mesh.fv(neighbor_face)]
         intersects, new_p = intersect_line_triangle(tangential_pos,
                                                     normal,
@@ -262,8 +266,10 @@ def remeshing(mesh, edge_length, iteraciones):
         print("Iteración {}:\tTerminado el colapso de aristas".format(i))
         optimizar_valencia(mesh)
         print("Iteración {}:\tTerminada la optimización de valencias".format(i))
-        relajacion_tangencial(mesh)
-        # proyectar_vertices(mesh)
+        tan_dict = relajacion_tangencial(mesh)
+        print("Iteración {}:\tTerminada la relajación tangencial".format(i))
+        proyectar_vertices(mesh, tan_dict)
+        print("Iteración {}:\tTerminada la proyección de vértices".format(i))
 
     return mesh
 
