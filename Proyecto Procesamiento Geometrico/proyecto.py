@@ -200,7 +200,6 @@ def optimizar_valencia(mesh: openmesh.TriMesh):
 def relajacion_tangencial(mesh: openmesh.TriMesh):
     vertex_normals = calculate_vertex_normals_by_angle(mesh)
     q = {}
-    tangent = {}
 
     for vertice in mesh.vertices():
         vertice_id = vertice.idx()
@@ -223,30 +222,22 @@ def relajacion_tangencial(mesh: openmesh.TriMesh):
         # formula del libro
         p_prime = q[vertice_id] + np.dot(n, (p - q[vertice_id])) * n
 
-        tangent[vertice_id] = p_prime
-
-    can_proyect = 1
-    tested_vertices = [v for v in mesh.vertices()]
-    while can_proyect > 0:
-        can_proyect = 0
-        tested_vertices_copy = tested_vertices.copy()
-        for vertice in tested_vertices_copy:
-            vertice_id = vertice.idx()
-            # actualizar posición del vertice
-            new_p = proyectar_vertices(mesh,
-                                       vertice,
-                                       tangent[vertice_id],
-                                       vertex_normals[vertice_id])
-            if new_p is not None:
-                mesh.set_point(vertice, new_p)
-                tested_vertices.remove(vertice)
-                can_proyect += 1
+        # actualizar posición del vertice
+        new_p = proyectar_vertices(mesh,
+                                   vertice,
+                                   p_prime,
+                                   n)
+        if new_p is not None:
+            mesh.set_point(vertice, new_p)
+        # mesh.set_point(vertice, p_prime)
 
 
 def proyectar_vertices(mesh: openmesh.TriMesh,
                        original_vertex: openmesh.VertexHandle,
                        tangential_pos: np.ndarray,
                        normal: np.ndarray):
+
+    #for neighbor_face in mesh.faces():
     for neighbor_face in mesh.vf(original_vertex):
         a, b, c = [mesh.point(v) for v in mesh.fv(neighbor_face)]
         intersects, new_p = intersect_line_triangle(tangential_pos,
